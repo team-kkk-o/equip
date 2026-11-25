@@ -45,6 +45,8 @@
     try{
       const j = await getJSON({action:"sync",since:cache.seq});
       if(!j.ok) throw new Error(j.error||"sync");
+      // 서버 번호가 내 기기보다 작으면(시트를 새로 만들었거나 초기화한 경우) 내 기기 자료를 비우고 처음부터 다시 받음
+      if((j.seq||0) < cache.seq){ cache.seq=0; cache.docs={}; cache.files={}; saveCache(); syncing=false; return sync(); }
       const changed = new Set();
       for(const [c,docs] of Object.entries(j.docs||{})){Object.assign(coll(c),docs);changed.add(c);}
       for(const [c,ids] of Object.entries(j.gone||{})){for(const id of ids)delete coll(c)[id];changed.add(c);}
