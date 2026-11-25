@@ -584,13 +584,13 @@ html[data-offline] .netbar{display:block}
 
 <script>
 const ARTIFACT_URL = location.origin+location.pathname.replace(/index\.html$/,"");   // QR = 이 앱 주소 + #설비코드
-const PERIODS = {D:{label:"일상", unit:"일"}, M:{label:"월간", unit:"월"}, Q:{label:"분기", unit:"분기"}, Y:{label:"연간", unit:"년"}};
-const PK = ["D","M","Q","Y"];
+const PERIODS = {D:{label:"일상", unit:"일"}, W:{label:"주간", unit:"주"}, M:{label:"월간", unit:"월"}, Q:{label:"분기", unit:"분기"}, Y:{label:"연간", unit:"년"}};
+const PK = ["D","W","M","Q","Y"];
 const manualsOf = e => e?.manuals?.length ? e.manuals : e?.manualId ? [{id:e.manualId,name:e.manualName||"매뉴얼"}] : [];
 
-const ROLES = {PROD:{label:"일상", sub:"매일 하는 점검"}, MAINT:{label:"주기", sub:"월간·분기·연간 점검"}};
+const ROLES = {PROD:{label:"일상", sub:"매일 하는 점검"}, MAINT:{label:"주기", sub:"주간·월간·분기·연간 점검"}};
 // 구분 = 점검 성격: 일상(일일) / 주기(월간·분기·연간). 내부 코드는 기존 데이터 호환을 위해 PROD/MAINT 유지
-const PKR = role => role==="MAINT"?["M","Q","Y"]:["D"];
+const PKR = role => role==="MAINT"?["W","M","Q","Y"]:["D"];
 const roleForPeriod = p => p==="D"?"PROD":"MAINT";
 function loadRole(){try{const r=localStorage.getItem("eqRole");return ROLES[r]?r:"PROD";}catch(e){return "PROD";}}
 function saveRole(r){try{localStorage.setItem("eqRole",r);}catch(e){}}
@@ -608,12 +608,17 @@ function periodKey(p, d = new Date()){
   if(p==="D") return `${y}-${pad(m)}-${pad(d.getDate())}`;
   if(p==="M") return `${y}-${pad(m)}`;
   if(p==="Y") return `${y}`;
+  if(p==="W"){   // ISO 주차 (월요일 시작)
+    const t=new Date(Date.UTC(y,d.getMonth(),d.getDate())), wd=t.getUTCDay()||7; t.setUTCDate(t.getUTCDate()+4-wd);
+    const y1=new Date(Date.UTC(t.getUTCFullYear(),0,1)); return `${t.getUTCFullYear()}-W${pad(Math.ceil(((t-y1)/864e5+1)/7))}`;
+  }
   return `${y}-Q${Math.floor((m-1)/3)+1}`;
 }
 function periodText(p,k){
   if(p==="D") return k;
   if(p==="Y") return `${k}년`;
   if(p==="M"){const [y,m]=k.split("-");return `${y}년 ${+m}월`;}
+  if(p==="W"){const [y,w]=k.split("-W");return `${y}년 ${+w}주차`;}
   const [y,q]=k.split("-Q");return `${y}년 ${q}분기`;
 }
 function fmtTime(ts){const d=new Date(ts);return `${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;}
@@ -1078,9 +1083,9 @@ function renderList(){
   const rank=e=>{if(!e.line)return 90;const i=LINE_ORDER.findIndex(r=>r.test(e.line));return i<0?50:i;};
   const all=Object.values(S.eq).sort((a,b)=>rank(a)-rank(b)||(a.line||"").localeCompare(b.line||"","ko",{numeric:true})||(a.seq??99)-(b.seq??99)||a.code.localeCompare(b.code));
   const list=all.filter(e=>!eqState(e.code,role).none), unreg=all.filter(e=>eqState(e.code,role).none);
-  let dNeed=0,dDone=0;const left={M:0,Q:0,Y:0};
+  let dNeed=0,dDone=0;const left={W:0,M:0,Q:0,Y:0};
   for(const e of list){const s=eqState(e.code,role);for(const p of s.ps){if(p==="D"){dNeed++;if(s.st.D!=="todo")dDone++;}else if(s.st[p]==="todo")left[p]++;}}
-  const otherLeft=left.M+left.Q+left.Y, oi=openIssues().sort((a,b)=>a.ts-b.ts);
+  const otherLeft=left.W+left.M+left.Q+left.Y, oi=openIssues().sort((a,b)=>a.ts-b.ts);
   const la=lifeAlerts(), ov=la.filter(l=>lifeState(l).st==="over").length;
   const groups=[];for(const e of list){const k=e.line||"기타 설비";let g=groups.find(x=>x.k===k);if(!g)groups.push(g={k,items:[]});g.items.push(e);}
   const d=new Date(), wd="일월화수목금토"[d.getDay()];
@@ -1100,7 +1105,7 @@ function renderList(){
     </a>`;
   };
   $("#app").innerHTML=`
-  ${pageHead(`${ROLES[role].label} 점검`,`${S.ses?esc(S.ses.name)+" · ":""}${role==="MAINT"?`이번 기간 남은 주기점검 ${otherLeft}건 (월간 ${left.M}·분기 ${left.Q}·연간 ${left.Y})`:`오늘 일상점검 ${dDone}/${dNeed}대 완료`}`)}
+  ${pageHead(`${ROLES[role].label} 점검`,`${S.ses?esc(S.ses.name)+" · ":""}${role==="MAINT"?`이번 기간 남은 주기점검 ${otherLeft}건 (${left.W?`주간 ${left.W}·`:""}월간 ${left.M}·분기 ${left.Q}·연간 ${left.Y})`:`오늘 일상점검 ${dDone}/${dNeed}대 완료`}`)}
   <a class="qrstart" href="#scan" data-live>
     <span class="qic">${MI.qr}</span>
     <span class="qt"><b>QR 스캔</b><small>라벨 QR 읽기 · 코드 붙여넣기 · 바코드 스캐너 · 또는 아래에서 설비를 고르세요</small></span>
@@ -1158,9 +1163,9 @@ const sortedEq=()=>{
 };
 function todayStats(role){
   const list=sortedEq().filter(e=>!eqState(e.code,role).none);
-  let dNeed=0,dDone=0;const left={M:0,Q:0,Y:0};
+  let dNeed=0,dDone=0;const left={W:0,M:0,Q:0,Y:0};
   for(const e of list){const s=eqState(e.code,role);for(const p of s.ps){if(p==="D"){dNeed++;if(s.st.D!=="todo")dDone++;}else if(s.st[p]==="todo")left[p]++;}}
-  return {list,dNeed,dDone,left,otherLeft:left.M+left.Q+left.Y};
+  return {list,dNeed,dDone,left,otherLeft:left.W+left.M+left.Q+left.Y};
 }
 function renderHome(){
   const role=S.role; setCrumbs("");
@@ -1196,7 +1201,7 @@ function renderHome(){
   ${S.loaded.eq&&t.dNeed?`<a class="today" href="#inspect">
     <div class="tk"><span>오늘 일상점검</span><b class="mono">${t.dDone}<small>/${t.dNeed}대</small></b></div>
     <div class="prog ${t.dDone===t.dNeed?"ok":""}"><i style="width:${pct}%"></i></div>
-    <div class="hint">${t.dDone<t.dNeed?`${t.dNeed-t.dDone}대 남음`:"오늘 일상점검을 모두 마쳤습니다"}${tP.otherLeft?` · 주기점검 ${tP.otherLeft}건 남음 (월간 ${tP.left.M}·분기 ${tP.left.Q}·연간 ${tP.left.Y})`:""}</div>
+    <div class="hint">${t.dDone<t.dNeed?`${t.dNeed-t.dDone}대 남음`:"오늘 일상점검을 모두 마쳤습니다"}${tP.otherLeft?` · 주기점검 ${tP.otherLeft}건 남음 (${tP.left.W?`주간 ${tP.left.W}·`:""}월간 ${tP.left.M}·분기 ${tP.left.Q}·연간 ${tP.left.Y})`:""}</div>
   </a>`:""}
 
   <nav class="menu" aria-label="메뉴">
@@ -1221,7 +1226,7 @@ function renderLanding(){
       <div class="land-t">
         <div class="land-k">DCE Solution</div>
         <h1>설비 QR 점검 시스템</h1>
-        <p>설비에 붙은 QR을 찍으면<br><b>일상점검</b>과 <b>주기점검</b>(월간·분기·연간)을 바로 시작하고 기록할 수 있습니다</p>
+        <p>설비에 붙은 QR을 찍으면<br><b>일상점검</b>과 <b>주기점검</b>(주간·월간·분기·연간)을 바로 시작하고 기록할 수 있습니다</p>
       </div>
       <div class="land-clock"><b class="mono" id="landTime">${pad(d.getHours())}:${pad(d.getMinutes())}</b><span>${d.getFullYear()}. ${d.getMonth()+1}. ${d.getDate()}. (${wd})</span></div>
       <div class="land-go">
@@ -1641,8 +1646,9 @@ function ensureDraft(code){
 
 function renderEquip(code){
   const e=S.eq[code]; collectInputs();
-  if(!PKR(S.role).includes(S.tab)){S.tab=PKR(S.role)[0];S.draftKey="";}
-  if(S.tabAuto){const f=PKR(S.role).find(q=>partsOf(code,q,S.role).length);if(f&&f!==S.tab){S.tab=f;S.draftKey="";}}
+  const PT=PKR(S.role).filter(q=>q!=="W"||partsOf(code,"W",S.role).length);   // 주간 탭은 주간 항목이 있는 설비만
+  if(!PT.includes(S.tab)){S.tab=PT[0];S.draftKey="";}
+  if(S.tabAuto){const f=PT.find(q=>partsOf(code,q,S.role).length);if(f&&f!==S.tab){S.tab=f;S.draftKey="";}}
   ensureDraft(code);
   const view=S.eqView||"check";
   const p=S.tab, key=periodKey(p), parts=partsOf(code,p,S.role), rec=recOf(code,p,key);
@@ -1657,8 +1663,8 @@ function renderEquip(code){
   const ptPanel=view==="check"?renderPointMap(code):"";
   const checklist=`
   ${ptPanel?`<details class="panel" ${S.openFull?"open":""} id="fullDet"><summary><span style="font-size:18px">전체 점검표</span> <span class="hint">포인트 순서 없이 주기별로 한 번에 보기·수정</span></summary>`:`<section class="panel" aria-label="점검표">`}
-    ${PKR(S.role).length<2?"":`<div class="tabs" role="tablist" style="grid-template-columns:repeat(${PKR(S.role).length},1fr)">
-      ${PKR(S.role).map(q=>{const r=recOf(code,q,periodKey(q));const has=partsOf(code,q,S.role).length;const st=!has?"항목 없음":!r?"미점검":!recDone(r)?"진행 중":r.ng>0?`불량 ${r.ng}`:"완료";
+    ${PT.length<2?"":`<div class="tabs" role="tablist" style="grid-template-columns:repeat(${PT.length},1fr)">
+      ${PT.map(q=>{const r=recOf(code,q,periodKey(q));const has=partsOf(code,q,S.role).length;const st=!has?"항목 없음":!r?"미점검":!recDone(r)?"진행 중":r.ng>0?`불량 ${r.ng}`:"완료";
         return `<button class="tab ${has?"":"none"}" role="tab" aria-selected="${q===p}" data-tab="${q}">${PERIODS[q].label}<small style="color:${!has||!r?"var(--faint)":!recDone(r)?"var(--todo)":r.ng>0?"var(--ng)":"var(--ok)"}">${st}</small></button>`}).join("")}
     </div>`}
     <div class="sechead">
@@ -1669,7 +1675,7 @@ function renderEquip(code){
     `<div class="items two">${parts.map((x,i)=>itemHtml(x,i)).join("")}</div>
     ${saveBar("saveBtn",done,parts.length,recDone(rec)?"수정 저장":"점검 완료 저장")}`}
   ${ptPanel?`</details>`:`</section>`}`;
-  const hasAny=PKR(S.role).some(q=>partsOf(code,q,S.role).length);
+  const hasAny=PT.some(q=>partsOf(code,q,S.role).length);
   let body="";
   if(view==="check") body=hasAny?ptPanel+checklist:`<div class="panel"><div class="empty">${ROLES[S.role].label} 점검 항목이 아직 없습니다.${S.admin?" '관리' 탭에서 추가하세요.":""}</div></div>`;
   else if(view==="life") body=renderLife(code)||`<div class="panel"><div class="empty">등록된 교체주기 항목이 없습니다.</div></div>`;
